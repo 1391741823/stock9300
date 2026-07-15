@@ -174,6 +174,7 @@ jobs:
           echo "  PushPlus: $([ -n "$PUSHPLUS_TOKEN" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "  企业微信: $([ -n "$WECHAT_WEBHOOK_URL" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "  飞书: $([ -n "$FEISHU_WEBHOOK_URL" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
+          echo "  飞书2: $([ -n "$FEISHU_WEBHOOK_URL_2" ] && echo '✅ 已配置' || echo '⚪ 未配置')"  # ← 添加这行
           echo "  Telegram: $([ -n "$TELEGRAM_BOT_TOKEN" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "  Discord: $([ -n "$DISCORD_WEBHOOK_URL" ] && echo '✅ 已配置' || echo '⚪ 未配置')"
           echo "=========================================="
