@@ -83,7 +83,7 @@ jobs:
           # ==========================================
           WECHAT_WEBHOOK_URL: ${{ secrets.WECHAT_WEBHOOK_URL }}
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          
+          FEISHU_WEBHOOK_URL_2: ${{ secrets.FEISHU_WEBHOOK_URL_2 }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           EMAIL_SENDER: ${{ vars.EMAIL_SENDER || secrets.EMAIL_SENDER }}
@@ -104,7 +104,7 @@ jobs:
           # ==========================================
           # ⭐ 美股自选股配置（修改这里）
           # ==========================================
-          STOCK_LIST: ${{ vars.US_STOCK_LIST || secrets.US_STOCK_LIST || 'AAPL,MSFT,NVDA,GOOGL,TSLA,AMZN,META' }}
+          STOCK_LIST: ${{ vars.US_STOCK_LIST || secrets.US_STOCK_LIST || 'SOXX,QQQ,VGT,XLF,XLV,XLE,IWM,SMH,AIQ' }}
           
           # ==========================================
           # 运行配置
