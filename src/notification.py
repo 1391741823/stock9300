@@ -134,25 +134,25 @@ class NotificationService:
         
         # 各渠道的 Webhook URL
         self._wechat_url = config.wechat_webhook_url
-        #self._feishu_url = getattr(config, 'feishu_webhook_url', None)
+        self._feishu_url = getattr(config, 'feishu_webhook_url', None)
 
          # 收集所有飞书 Webhook URL（支持多个）
-         self._feishu_urls = []
+        self._feishu_urls = []
          # 主 URL
-         main_url = getattr(config, 'feishu_webhook_url', None)
-         if main_url:
-             self._feishu_urls.append(main_url)
+        main_url = getattr(config, 'feishu_webhook_url', None)
+        if main_url:
+            self._feishu_urls.append(main_url)
          # 额外 URL（FEISHU_WEBHOOK_URL_2, _3, ...）
-         import os
-         for i in range(2, 10):  # 最多支持到 _9
-             env_key = f'FEISHU_WEBHOOK_URL_{i}'
-             url = os.getenv(env_key)
-             if url:
-                 self._feishu_urls.append(url)
+        import os
+        for i in range(2, 10):  # 最多支持到 _9
+            env_key = f'FEISHU_WEBHOOK_URL_{i}'
+            url = os.getenv(env_key)
+            if url:
+                self._feishu_urls.append(url)
          # 也支持用逗号分隔的单个变量
-         if not self._feishu_urls:
+        if not self._feishu_urls:
              # 如果上面没有，尝试从主 URL 中按逗号分割（备选）
-             pass
+            pass
        
         # Telegram 配置
         self._telegram_config = {
