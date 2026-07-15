@@ -28,6 +28,33 @@ from src.enums import ReportType
 from src.stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from bot.models import BotMessage
 
+# ===== 美股 ETF 中文名称映射表 =====
+US_ETF_NAMES = {
+    "SOXX": "半导体ETF",
+    "SMH": "半导体ETF(VanEck)",
+    "QQQ": "纳斯达克100ETF",
+    "VGT": "科技ETF",
+    "XLK": "科技板块ETF",
+    "XLF": "金融ETF",
+    "XLV": "医疗保健ETF",
+    "XLE": "能源ETF",
+    "XLI": "工业ETF",
+    "XLY": "可选消费ETF",
+    "XLP": "必需消费ETF",
+    "XLU": "公用事业ETF",
+    "IWM": "罗素2000ETF",
+    "IJR": "小盘股ETF",
+    "TLT": "长期国债ETF",
+    "VT": "全球股票ETF",
+    "SHY": "短期国债ETF",
+    "SPY": "标普500ETF",
+    "IVV": "标普500ETF(iShares)",
+    "VOO": "标普500ETF(Vanguard)",
+    "DIA": "道指ETF",
+    "AIQ": "人工智能ETF",
+    "MAGS": "七大科技巨头ETF",
+    "MGK": "超大型成长股ETF",
+}
 
 logger = logging.getLogger(__name__)
 
