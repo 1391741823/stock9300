@@ -1359,7 +1359,6 @@ class NotificationService:
             except UnicodeDecodeError:
                 truncated = truncated[:-1]
         return ""
-    
     def _send_wechat_message(self, content: str) -> bool:
         """发送企业微信消息"""
         payload = {
@@ -1368,13 +1367,11 @@ class NotificationService:
                 "content": content
             }
         }
-        
         response = requests.post(
             self._wechat_url,
             json=payload,
             timeout=10
         )
-        
         if response.status_code == 200:
             result = response.json()
             if result.get('errcode') == 0:
@@ -1386,47 +1383,100 @@ class NotificationService:
         else:
             logger.error(f"企业微信请求失败: {response.status_code}")
             return False
+
     def send_to_feishu(self, content: str) -> bool:
-       """
-       推送消息到飞书机器人（支持多个）
-       """
-       if not self._feishu_urls:
-           logger.warning("飞书 Webhook 未配置，跳过推送")
-           return False
-   
-       formatted_content = self._format_feishu_markdown(content)
-       max_bytes = self._feishu_max_bytes
-   
-       # 如果内容超长，先分块，然后对每个 URL 发送所有块
-       if len(formatted_content.encode('utf-8')) > max_bytes:
-           chunks = self._split_content_for_feishu(formatted_content, max_bytes)
-       else:
-           chunks = [formatted_content]
-   
-       success_count = 0
-       total_urls = len(self._feishu_urls)
-   
-       for idx, url in enumerate(self._feishu_urls):
-           # 临时替换 self._feishu_url 为当前 URL（原有发送逻辑依赖它）
-           original_url = getattr(self, '_feishu_url', None)
-           self._feishu_url = url  # 临时设置
-   
-           for chunk in chunks:
-               try:
-                   if self._send_feishu_message(chunk):  # 使用原有的发送方法
-                       success_count += 1
-                       logger.info(f"飞书 ({idx+1}/{total_urls}) 消息发送成功")
-                   else:
-                       logger.error(f"飞书 ({idx+1}/{total_urls}) 消息发送失败")
-               except Exception as e:
-                   logger.error(f"飞书 ({idx+1}/{total_urls}) 发送异常: {e}")
-   
-           # 恢复原 URL（如果有）
-           if original_url:
-               self._feishu_url = original_url
-   
-       # 判断是否全部成功（至少一个成功）
-       return success_count > 0
+        """
+        推送消息到飞书机器人（支持多个 Webhook）
+        """
+        # 检查是否有任何飞书 URL 配置
+        if not self._feishu_urls:
+            logger.warning("飞书 Webhook 未配置，跳过推送")
+            return False
+
+        formatted_content = self._format_feishu_markdown(content)
+        max_bytes = self._feishu_max_bytes
+
+        # 判断是否需要分块
+        content_bytes = len(formatted_content.encode('utf-8'))
+        if content_bytes > max_bytes:
+            logger.info(f"飞书消息内容超长({content_bytes}字节)，将分批发送")
+            return self._send_feishu_to_all_urls(formatted_content, max_bytes)
+        else:
+            return self._send_feishu_to_all_urls(formatted_content, max_bytes)
+
+    def _send_feishu_to_all_urls(self, content: str, max_bytes: int) -> bool:
+        """
+        向所有配置的飞书 URL 发送消息（支持分块）
+        """
+        if not self._feishu_urls:
+            return False
+
+        # 准备分块
+        chunks = []
+        if len(content.encode('utf-8')) > max_bytes:
+            # 按分隔线分割
+            if "\n---\n" in content:
+                sections = content.split("\n---\n")
+                separator = "\n---\n"
+            else:
+                sections = content.split("\n")
+                separator = "\n"
+            
+            current_chunk = ""
+            for section in sections:
+                test_chunk = current_chunk + (separator if current_chunk else "") + section
+                if len(test_chunk.encode('utf-8')) > max_bytes - 200:
+                    if current_chunk:
+                        chunks.append(current_chunk)
+                    current_chunk = section
+                else:
+                    current_chunk = test_chunk
+            if current_chunk:
+                chunks.append(current_chunk)
+        else:
+            chunks = [content]
+
+        # 向每个 URL 发送
+        success_count = 0
+        total_urls = len(self._feishu_urls)
+
+        for idx, url in enumerate(self._feishu_urls):
+            # 临时替换 _feishu_url（_send_feishu_message 依赖它）
+            original_url = self._feishu_url
+            self._feishu_url = url
+
+            url_success = True
+            for chunk_idx, chunk in enumerate(chunks):
+                try:
+                    if len(chunks) > 1:
+                        chunk_with_page = chunk + f"\n\n📄 ({chunk_idx+1}/{len(chunks)})"
+                    else:
+                        chunk_with_page = chunk
+
+                    if self._send_feishu_message(chunk_with_page):
+                        logger.info(f"飞书 ({idx+1}/{total_urls}) 分块 {chunk_idx+1}/{len(chunks)} 发送成功")
+                    else:
+                        logger.error(f"飞书 ({idx+1}/{total_urls}) 分块 {chunk_idx+1}/{len(chunks)} 发送失败")
+                        url_success = False
+                except Exception as e:
+                    logger.error(f"飞书 ({idx+1}/{total_urls}) 异常: {e}")
+                    url_success = False
+
+            # 恢复原有 URL
+            self._feishu_url = original_url
+
+            if url_success:
+                success_count += 1
+
+        return success_count > 0
+
+    def _send_feishu_chunked(self, content: str, max_bytes: int) -> bool:
+        """
+        分批发送长消息到飞书（单 URL 版本，保留以备后用）
+        """
+        # 此方法保留原逻辑，但多 URL 场景下实际由 _send_feishu_to_all_urls 处理
+        # 为兼容旧调用，简单封装
+        return self._send_feishu_to_all_urls(content, max_bytes)
     
     def _send_feishu_chunked(self, content: str, max_bytes: int) -> bool:
         """
