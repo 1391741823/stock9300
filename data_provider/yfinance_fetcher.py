@@ -113,7 +113,7 @@ class YfinanceFetcher(BaseFetcher):
             logger.warning(f"无法确定股票 {code} 的市场，默认使用深市")
             return f"{code}.SZ"
     
-    @retry(
+   @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=30),
         retry=retry_if_exception_type((ConnectionError, TimeoutError)),
@@ -121,31 +121,38 @@ class YfinanceFetcher(BaseFetcher):
     )
     def _fetch_raw_data(self, stock_code: str, start_date: str, end_date: str) -> pd.DataFrame:
         """
-        从 Yahoo Finance 获取原始数据
-        
-        使用 yfinance.download() 获取历史数据
-        
-        流程：
-        1. 转换股票代码格式
-        2. 调用 yfinance API
-        3. 处理返回数据
+        从 Yahoo Finance 获取原始数据（支持 ETF 更稳定）
         """
         import yfinance as yf
         
         # 转换代码格式
         yf_code = self._convert_stock_code(stock_code)
-        
-        logger.debug(f"调用 yfinance.download({yf_code}, {start_date}, {end_date})")
+        logger.debug(f"调用 yfinance 获取 {yf_code}")
         
         try:
-            # 使用 yfinance 下载数据
-            df = yf.download(
-                tickers=yf_code,
+            # 方式一：使用 Ticker 方式（对 ETF 更稳定）
+            ticker = yf.Ticker(yf_code)
+            df = ticker.history(
                 start=start_date,
                 end=end_date,
-                progress=False,  # 禁止进度条
-                auto_adjust=True,  # 自动调整价格（复权）
+                auto_adjust=True,
             )
+            
+            # 如果数据为空，回退到 download 方式
+            if df.empty:
+                logger.debug(f"{yf_code} Ticker 方式为空，尝试 download")
+                df = yf.download(
+                    tickers=yf_code,
+                    start=start_date,
+                    end=end_date,
+                    progress=False,
+                    auto_adjust=True,
+                    group_by='ticker',
+                )
+                # 处理多列结构
+                if isinstance(df.columns, pd.MultiIndex):
+                    if yf_code in df.columns.levels[0]:
+                        df = df[yf_code]
             
             if df.empty:
                 raise DataFetchError(f"Yahoo Finance 未查询到 {stock_code} 的数据")
