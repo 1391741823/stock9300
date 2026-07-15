@@ -134,8 +134,26 @@ class NotificationService:
         
         # 各渠道的 Webhook URL
         self._wechat_url = config.wechat_webhook_url
-        self._feishu_url = getattr(config, 'feishu_webhook_url', None)
-        
+        #self._feishu_url = getattr(config, 'feishu_webhook_url', None)
+
+         # 收集所有飞书 Webhook URL（支持多个）
+         self._feishu_urls = []
+         # 主 URL
+         main_url = getattr(config, 'feishu_webhook_url', None)
+         if main_url:
+             self._feishu_urls.append(main_url)
+         # 额外 URL（FEISHU_WEBHOOK_URL_2, _3, ...）
+         import os
+         for i in range(2, 10):  # 最多支持到 _9
+             env_key = f'FEISHU_WEBHOOK_URL_{i}'
+             url = os.getenv(env_key)
+             if url:
+                 self._feishu_urls.append(url)
+         # 也支持用逗号分隔的单个变量
+         if not self._feishu_urls:
+             # 如果上面没有，尝试从主 URL 中按逗号分割（备选）
+             pass
+       
         # Telegram 配置
         self._telegram_config = {
             'bot_token': getattr(config, 'telegram_bot_token', None),
@@ -1368,50 +1386,47 @@ class NotificationService:
         else:
             logger.error(f"企业微信请求失败: {response.status_code}")
             return False
-    
     def send_to_feishu(self, content: str) -> bool:
-        """
-        推送消息到飞书机器人
-        
-        飞书自定义机器人 Webhook 消息格式：
-        {
-            "msg_type": "text",
-            "content": {
-                "text": "文本内容"
-            }
-        }
-        
-        说明：飞书文本消息不会渲染 Markdown，需使用交互卡片（lark_md）格式
-        
-        注意：飞书文本消息限制约 20KB，超长内容会自动分批发送
-        可通过环境变量 FEISHU_MAX_BYTES 调整限制值
-        
-        Args:
-            content: 消息内容（Markdown 会转为纯文本）
-            
-        Returns:
-            是否发送成功
-        """
-        if not self._feishu_url:
-            logger.warning("飞书 Webhook 未配置，跳过推送")
-            return False
-        
-        # 飞书 lark_md 支持有限，先做格式转换
-        formatted_content = self._format_feishu_markdown(content)
-
-        max_bytes = self._feishu_max_bytes  # 从配置读取，默认 20000 字节
-        
-        # 检查字节长度，超长则分批发送
-        content_bytes = len(formatted_content.encode('utf-8'))
-        if content_bytes > max_bytes:
-            logger.info(f"飞书消息内容超长({content_bytes}字节/{len(content)}字符)，将分批发送")
-            return self._send_feishu_chunked(formatted_content, max_bytes)
-        
-        try:
-            return self._send_feishu_message(formatted_content)
-        except Exception as e:
-            logger.error(f"发送飞书消息失败: {e}")
-            return False
+       """
+       推送消息到飞书机器人（支持多个）
+       """
+       if not self._feishu_urls:
+           logger.warning("飞书 Webhook 未配置，跳过推送")
+           return False
+   
+       formatted_content = self._format_feishu_markdown(content)
+       max_bytes = self._feishu_max_bytes
+   
+       # 如果内容超长，先分块，然后对每个 URL 发送所有块
+       if len(formatted_content.encode('utf-8')) > max_bytes:
+           chunks = self._split_content_for_feishu(formatted_content, max_bytes)
+       else:
+           chunks = [formatted_content]
+   
+       success_count = 0
+       total_urls = len(self._feishu_urls)
+   
+       for idx, url in enumerate(self._feishu_urls):
+           # 临时替换 self._feishu_url 为当前 URL（原有发送逻辑依赖它）
+           original_url = getattr(self, '_feishu_url', None)
+           self._feishu_url = url  # 临时设置
+   
+           for chunk in chunks:
+               try:
+                   if self._send_feishu_message(chunk):  # 使用原有的发送方法
+                       success_count += 1
+                       logger.info(f"飞书 ({idx+1}/{total_urls}) 消息发送成功")
+                   else:
+                       logger.error(f"飞书 ({idx+1}/{total_urls}) 消息发送失败")
+               except Exception as e:
+                   logger.error(f"飞书 ({idx+1}/{total_urls}) 发送异常: {e}")
+   
+           # 恢复原 URL（如果有）
+           if original_url:
+               self._feishu_url = original_url
+   
+       # 判断是否全部成功（至少一个成功）
+       return success_count > 0
     
     def _send_feishu_chunked(self, content: str, max_bytes: int) -> bool:
         """
