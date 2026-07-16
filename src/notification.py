@@ -1368,50 +1368,101 @@ class NotificationService:
         else:
             logger.error(f"企业微信请求失败: {response.status_code}")
             return False
-    
     def send_to_feishu(self, content: str) -> bool:
         """
-        推送消息到飞书机器人
-        
-        飞书自定义机器人 Webhook 消息格式：
-        {
-            "msg_type": "text",
-            "content": {
-                "text": "文本内容"
-            }
-        }
-        
-        说明：飞书文本消息不会渲染 Markdown，需使用交互卡片（lark_md）格式
-        
-        注意：飞书文本消息限制约 20KB，超长内容会自动分批发送
-        可通过环境变量 FEISHU_MAX_BYTES 调整限制值
-        
-        Args:
-            content: 消息内容（Markdown 会转为纯文本）
-            
-        Returns:
-            是否发送成功
+        推送消息到飞书机器人（支持多个 Webhook）
+        自动读取 FEISHU_WEBHOOK_URL, FEISHU_WEBHOOK_URL_2, ... 所有环境变量
         """
-        if not self._feishu_url:
+        import os
+        
+        # 收集所有飞书 URL
+        urls = []
+        i = 1
+        while True:
+            env_key = f'FEISHU_WEBHOOK_URL{"" if i == 1 else f"_{i}"}'
+            url = os.getenv(env_key)
+            if url:
+                urls.append(url)
+                logger.info(f"发现飞书 Webhook: {env_key}")
+                i += 1
+            else:
+                break
+        
+        if not urls:
             logger.warning("飞书 Webhook 未配置，跳过推送")
             return False
-        
-        # 飞书 lark_md 支持有限，先做格式转换
-        formatted_content = self._format_feishu_markdown(content)
 
-        max_bytes = self._feishu_max_bytes  # 从配置读取，默认 20000 字节
-        
-        # 检查字节长度，超长则分批发送
+        formatted_content = self._format_feishu_markdown(content)
+        max_bytes = self._feishu_max_bytes
+
+        # 检查是否超长，准备分块
         content_bytes = len(formatted_content.encode('utf-8'))
         if content_bytes > max_bytes:
-            logger.info(f"飞书消息内容超长({content_bytes}字节/{len(content)}字符)，将分批发送")
-            return self._send_feishu_chunked(formatted_content, max_bytes)
-        
-        try:
-            return self._send_feishu_message(formatted_content)
-        except Exception as e:
-            logger.error(f"发送飞书消息失败: {e}")
-            return False
+            logger.info(f"飞书消息内容超长({content_bytes}字节)，将分批发送")
+            chunks = self._split_feishu_content(formatted_content, max_bytes)
+        else:
+            chunks = [formatted_content]
+
+        # 向每个 URL 发送
+        success_count = 0
+        for idx, url in enumerate(urls):
+            # 临时替换 self._feishu_url（_send_feishu_message 依赖它）
+            original_url = self._feishu_url
+            self._feishu_url = url
+
+            url_success = True
+            for chunk_idx, chunk in enumerate(chunks):
+                try:
+                    if len(chunks) > 1:
+                        chunk_with_page = chunk + f"\n\n📄 ({chunk_idx+1}/{len(chunks)})"
+                    else:
+                        chunk_with_page = chunk
+
+                    if self._send_feishu_message(chunk_with_page):
+                        logger.info(f"飞书 ({idx+1}/{len(urls)}) 分块 {chunk_idx+1}/{len(chunks)} 发送成功")
+                    else:
+                        logger.error(f"飞书 ({idx+1}/{len(urls)}) 分块 {chunk_idx+1}/{len(chunks)} 发送失败")
+                        url_success = False
+                except Exception as e:
+                    logger.error(f"飞书 ({idx+1}/{len(urls)}) 异常: {e}")
+                    url_success = False
+
+            # 恢复原有 URL
+            self._feishu_url = original_url
+
+            if url_success:
+                success_count += 1
+
+        return success_count > 0
+       
+    def _split_feishu_content(self, content: str, max_bytes: int) -> List[str]:
+        """
+        按字节数分割飞书消息内容
+        """
+        if len(content.encode('utf-8')) <= max_bytes:
+            return [content]
+
+        chunks = []
+        if "\n---\n" in content:
+            sections = content.split("\n---\n")
+            separator = "\n---\n"
+        else:
+            sections = content.split("\n")
+            separator = "\n"
+
+        current_chunk = ""
+        for section in sections:
+            test_chunk = current_chunk + (separator if current_chunk else "") + section
+            if len(test_chunk.encode('utf-8')) > max_bytes - 200:
+                if current_chunk:
+                    chunks.append(current_chunk)
+                current_chunk = section
+            else:
+                current_chunk = test_chunk
+        if current_chunk:
+            chunks.append(current_chunk)
+
+        return chunks
     
     def _send_feishu_chunked(self, content: str, max_bytes: int) -> bool:
         """
