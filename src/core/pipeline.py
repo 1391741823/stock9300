@@ -28,33 +28,6 @@ from src.enums import ReportType
 from src.stock_analyzer import StockTrendAnalyzer, TrendAnalysisResult
 from bot.models import BotMessage
 
-# ===== 美股 ETF 中文名称映射表 =====
-US_ETF_NAMES = {
-    "SOXX": "半导体ETF",
-    "SMH": "半导体ETF(VanEck)",
-    "QQQ": "纳斯达克100ETF",
-    "VGT": "科技ETF",
-    "XLK": "科技板块ETF",
-    "XLF": "金融ETF",
-    "XLV": "医疗保健ETF",
-    "XLE": "能源ETF",
-    "XLI": "工业ETF",
-    "XLY": "可选消费ETF",
-    "XLP": "必需消费ETF",
-    "XLU": "公用事业ETF",
-    "IWM": "罗素2000ETF",
-    "IJR": "小盘股ETF",
-    "TLT": "长期国债ETF",
-    "VT": "全球股票ETF",
-    "SHY": "短期国债ETF",
-    "SPY": "标普500ETF",
-    "IVV": "标普500ETF(iShares)",
-    "VOO": "标普500ETF(Vanguard)",
-    "DIA": "道指ETF",
-    "AIQ": "人工智能ETF",
-    "MAGS": "七大科技巨头ETF",
-    "MGK": "超大型成长股ETF",
-}
 
 logger = logging.getLogger(__name__)
 
@@ -163,7 +136,7 @@ class StockAnalysisPipeline:
             logger.error(f"[{code}] {error_msg}")
             return False, error_msg
     
-    def analyze_stock(self, code: str) -> Optional[]:
+    def analyze_stock(self, code: str) -> Optional[AnalysisResult]:
         """
         分析单只股票（增强版：含量比、换手率、筹码分析、多维度情报）
         
@@ -179,7 +152,7 @@ class StockAnalysisPipeline:
             code: 股票代码
             
         Returns:
-             或 None（如果分析失败）
+            AnalysisResult 或 None（如果分析失败）
         """
         try:
             # 获取股票名称（优先从实时行情获取真实名称）
@@ -207,11 +180,7 @@ class StockAnalysisPipeline:
             # 如果还是没有名称，使用代码作为名称
             if not stock_name:
                 stock_name = f'股票{code}'
-            # # ========== 应用美股 ETF 中文名称映射（放在这里！） ==========
-            # if code in US_ETF_NAMES:
-            #     stock_name = US_ETF_NAMES[code]
-            #     logger.info(f"[{code}] 使用中文名称: {stock_name}")
-            # # ============================================================
+            
             # Step 2: 获取筹码分布 - 使用统一入口，带熔断保护
             chip_data = None
             try:
@@ -225,7 +194,7 @@ class StockAnalysisPipeline:
                 logger.warning(f"[{code}] 获取筹码分布失败: {e}")
             
             # Step 3: 趋势分析（基于交易理念）
-            trend_result: Optional[Trend] = None
+            trend_result: Optional[TrendAnalysisResult] = None
             try:
                 # 获取历史数据进行趋势分析
                 context = self.db.get_analysis_context(code)
@@ -302,7 +271,7 @@ class StockAnalysisPipeline:
         context: Dict[str, Any],
         realtime_quote,
         chip_data: Optional[ChipDistribution],
-        trend_result: Optional[Trend],
+        trend_result: Optional[TrendAnalysisResult],
         stock_name: str = ""
     ) -> Dict[str, Any]:
         """
@@ -402,7 +371,7 @@ class StockAnalysisPipeline:
         skip_analysis: bool = False,
         single_stock_notify: bool = False,
         report_type: ReportType = ReportType.SIMPLE
-    ) -> Optional[]:
+    ) -> Optional[AnalysisResult]:
         """
         处理单只股票的完整流程
 
@@ -421,7 +390,7 @@ class StockAnalysisPipeline:
             report_type: 报告类型枚举（从配置读取，Issue #119）
 
         Returns:
-             或 None
+            AnalysisResult 或 None
         """
         logger.info(f"========== 开始处理 {code} ==========")
         
@@ -478,7 +447,7 @@ class StockAnalysisPipeline:
         stock_codes: Optional[List[str]] = None,
         dry_run: bool = False,
         send_notification: bool = True
-    ) -> List[]:
+    ) -> List[AnalysisResult]:
         """
         运行完整的分析流程
         
@@ -529,7 +498,7 @@ class StockAnalysisPipeline:
         if single_stock_notify:
             logger.info(f"已启用单股推送模式：每分析完一只股票立即推送（报告类型: {report_type_str}）")
         
-        results: List[] = []
+        results: List[AnalysisResult] = []
         
         # 使用线程池并发处理
         # 注意：max_workers 设置较低（默认3）以避免触发反爬
@@ -588,7 +557,7 @@ class StockAnalysisPipeline:
         
         return results
     
-    def _send_notifications(self, results: List[], skip_push: bool = False) -> None:
+    def _send_notifications(self, results: List[AnalysisResult], skip_push: bool = False) -> None:
         """
         发送分析结果通知
         
