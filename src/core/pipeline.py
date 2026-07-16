@@ -163,7 +163,7 @@ class StockAnalysisPipeline:
             logger.error(f"[{code}] {error_msg}")
             return False, error_msg
     
-    def analyze_stock(self, code: str) -> Optional[AnalysisResult]:
+    def analyze_stock(self, code: str) -> Optional[]:
         """
         分析单只股票（增强版：含量比、换手率、筹码分析、多维度情报）
         
@@ -179,7 +179,7 @@ class StockAnalysisPipeline:
             code: 股票代码
             
         Returns:
-            AnalysisResult 或 None（如果分析失败）
+             或 None（如果分析失败）
         """
         try:
             # 获取股票名称（优先从实时行情获取真实名称）
@@ -207,7 +207,11 @@ class StockAnalysisPipeline:
             # 如果还是没有名称，使用代码作为名称
             if not stock_name:
                 stock_name = f'股票{code}'
-            
+            # ========== 应用美股 ETF 中文名称映射（放在这里！） ==========
+            if code in US_ETF_NAMES:
+                stock_name = US_ETF_NAMES[code]
+                logger.info(f"[{code}] 使用中文名称: {stock_name}")
+            # ============================================================
             # Step 2: 获取筹码分布 - 使用统一入口，带熔断保护
             chip_data = None
             try:
@@ -221,7 +225,7 @@ class StockAnalysisPipeline:
                 logger.warning(f"[{code}] 获取筹码分布失败: {e}")
             
             # Step 3: 趋势分析（基于交易理念）
-            trend_result: Optional[TrendAnalysisResult] = None
+            trend_result: Optional[Trend] = None
             try:
                 # 获取历史数据进行趋势分析
                 context = self.db.get_analysis_context(code)
@@ -298,7 +302,7 @@ class StockAnalysisPipeline:
         context: Dict[str, Any],
         realtime_quote,
         chip_data: Optional[ChipDistribution],
-        trend_result: Optional[TrendAnalysisResult],
+        trend_result: Optional[Trend],
         stock_name: str = ""
     ) -> Dict[str, Any]:
         """
@@ -398,7 +402,7 @@ class StockAnalysisPipeline:
         skip_analysis: bool = False,
         single_stock_notify: bool = False,
         report_type: ReportType = ReportType.SIMPLE
-    ) -> Optional[AnalysisResult]:
+    ) -> Optional[]:
         """
         处理单只股票的完整流程
 
@@ -417,7 +421,7 @@ class StockAnalysisPipeline:
             report_type: 报告类型枚举（从配置读取，Issue #119）
 
         Returns:
-            AnalysisResult 或 None
+             或 None
         """
         logger.info(f"========== 开始处理 {code} ==========")
         
@@ -474,7 +478,7 @@ class StockAnalysisPipeline:
         stock_codes: Optional[List[str]] = None,
         dry_run: bool = False,
         send_notification: bool = True
-    ) -> List[AnalysisResult]:
+    ) -> List[]:
         """
         运行完整的分析流程
         
@@ -525,7 +529,7 @@ class StockAnalysisPipeline:
         if single_stock_notify:
             logger.info(f"已启用单股推送模式：每分析完一只股票立即推送（报告类型: {report_type_str}）")
         
-        results: List[AnalysisResult] = []
+        results: List[] = []
         
         # 使用线程池并发处理
         # 注意：max_workers 设置较低（默认3）以避免触发反爬
@@ -584,7 +588,7 @@ class StockAnalysisPipeline:
         
         return results
     
-    def _send_notifications(self, results: List[AnalysisResult], skip_push: bool = False) -> None:
+    def _send_notifications(self, results: List[], skip_push: bool = False) -> None:
         """
         发送分析结果通知
         
