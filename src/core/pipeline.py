@@ -207,11 +207,11 @@ class StockAnalysisPipeline:
             # 如果还是没有名称，使用代码作为名称
             if not stock_name:
                 stock_name = f'股票{code}'
-            # ========== 应用美股 ETF 中文名称映射（放在这里！） ==========
-            if code in US_ETF_NAMES:
-                stock_name = US_ETF_NAMES[code]
-                logger.info(f"[{code}] 使用中文名称: {stock_name}")
-            # ============================================================
+            # # ========== 应用美股 ETF 中文名称映射（放在这里！） ==========
+            # if code in US_ETF_NAMES:
+            #     stock_name = US_ETF_NAMES[code]
+            #     logger.info(f"[{code}] 使用中文名称: {stock_name}")
+            # # ============================================================
             # Step 2: 获取筹码分布 - 使用统一入口，带熔断保护
             chip_data = None
             try:
